@@ -132,24 +132,6 @@ The Client half imports only React from the Harness module table; it does not
 import other Harness Client packages. HDF5 parsing stays on the Host, so the
 browser never needs an HDF5/WASM dependency.
 
-## Publishing to GitHub
-
-The repository root is already a complete package. To create and push a new
-repository:
-
-```bash
-git init
-git add .
-git commit -m "Initial commit: DSH 21cmEVAL explorer"
-git branch -M main
-git remote add origin https://github.com/thekaharis/dsh-eval21-explorer.git
-git push -u origin main
-```
-
-`dist/` and `*.tgz` are ignored by `.gitignore`; attach the release tarball to a
-GitHub release instead of committing it. No build or generated assets are
-required in the repository.
-
 ## Development
 
 The bundle is plain JavaScript and Python; there is no bundler. Edit the files
