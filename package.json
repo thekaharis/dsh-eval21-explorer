@@ -49,5 +49,13 @@
     "harness",
     "dsh",
     "visualization"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thekaharis/dsh-eval21-explorer.git"
+  },
+  "homepage": "https://github.com/thekaharis/dsh-eval21-explorer#readme",
+  "bugs": {
+    "url": "https://github.com/thekaharis/dsh-eval21-explorer/issues"
+  }
 }

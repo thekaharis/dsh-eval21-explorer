@@ -49,7 +49,7 @@ This repository root is the bundle package.
    GitHub spec:
 
    ```text
-   github:<owner>/dsh-eval21-explorer
+   github:thekaharis/dsh-eval21-explorer
    ```
 
    or clone the repository and install that checkout directory.
@@ -142,7 +142,7 @@ git init
 git add .
 git commit -m "Initial commit: DSH 21cmEVAL explorer"
 git branch -M main
-git remote add origin git@github.com:<owner>/dsh-eval21-explorer.git
+git remote add origin https://github.com/thekaharis/dsh-eval21-explorer.git
 git push -u origin main
 ```
 
