@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "21cmEVAL-Explorer",
+    "description": "21cmEVAL-HDF5-Läufe und ältere Ergebnisse lokal oder über SSH interaktiv untersuchen."
+  }
+}

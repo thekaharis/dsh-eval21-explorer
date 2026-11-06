@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "21cmEVAL explorer",
+    "description": "Interactively inspect 21cmEVAL HDF5 runs and legacy results over local folders or SSH."
+  }
+}
