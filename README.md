@@ -10,7 +10,11 @@ figures.
 
 - **Overview** — scorecard over all models for one target and group
   (RMSE, R², coherence, power ratio, IoU, bubble W₁, history, front width),
-  with selectable model rows.
+  with selectable model rows. Click a column header to sort by that value;
+  click **Models** to sort alphabetically by model key.
+- **Datasets** — switch between evaluation sets (for example 21cmFAST 199,
+  21cmFAST 200 and LoReLi). Overview, Charts and Cones are always scoped to
+  one dataset, so runs from different test sets are never mixed.
 - **Charts** — spectra (power ratio, coherence, Δ²), global history error,
   neutral-fraction PDF, bubble mass distribution, and reionization-front
   profiles. Wheel zoom, drag pan, double-click reset, legend toggles, hover
@@ -72,6 +76,11 @@ The source can be:
 - a legacy run directory containing `results.json` and `curves.npz`,
 - or a folder of result figures.
 
+For a tree containing several evaluation sets, select the **parent folder**
+(e.g. `cm21eval_hdf5/`, not one of its `21cmfast_199/`, `21cmfast_200/` or
+`loreli/` subfolders). The dataset switcher then appears above the tabs. The
+`fno-21cm (CNN)` model (`fno_cnn_whno_es`) is part of the **21cmFAST 200** set.
+
 For HDF5 data the panel reads `/dataset/info`, `/samples/ids`,
 `/model/meta`, `/metrics/*/result`, and only the plotted
 `/metrics/{voxel,spectrum,history,observable,bubble,morphology,front}/arrays/*`
@@ -123,7 +132,7 @@ selected tree and transfers only the metrics the panel plots.
 | File | Role |
 |---|---|
 | `index.js` | Host plugin: read-only `/eval21-api` route, caching |
-| `data.js` | Local scan/merge of HDF5 and legacy runs, metric flattening, NPZ/NPY decoding |
+| `data.js` | Local scan/merge of HDF5 and legacy runs, dataset grouping, metric flattening, NPZ/NPY decoding |
 | `hdf5.js` | Local Python bridge, including interpreter discovery |
 | `hdf5_reader.py` | h5py scan/read helper for `eval21-run/1` |
 | `ssh.js` | SSH transport, including remote HDF5 reads |

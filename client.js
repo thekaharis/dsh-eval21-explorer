@@ -32,6 +32,7 @@ window.__ModuleLoader__.load({
       charts: 'Charts',
       cones: 'Cones',
       figures: 'Figures',
+      dataset: 'Dataset',
       group: 'Group',
       allGroups: 'All groups',
       pass: 'Target',
@@ -48,6 +49,7 @@ window.__ModuleLoader__.load({
       noData: 'No data for this selection',
       selectModels: 'Select at least one model',
       clickRows: 'Select model rows to compare them in Charts and Cones.',
+      sortHint: 'Click a column header to sort.',
       figureAll: 'All',
       back: 'Back',
       reset: 'Reset view',
@@ -93,6 +95,7 @@ window.__ModuleLoader__.load({
       charts: 'Diagramme',
       cones: 'Cones',
       figures: 'Abbildungen',
+      dataset: 'Datensatz',
       group: 'Gruppe',
       allGroups: 'Alle Gruppen',
       pass: 'Ziel',
@@ -109,6 +112,7 @@ window.__ModuleLoader__.load({
       noData: 'Keine Daten für diese Auswahl',
       selectModels: 'Mindestens ein Modell auswählen',
       clickRows: 'Modellzeilen auswählen, um sie in Diagrammen und Cones zu vergleichen.',
+      sortHint: 'Zum Sortieren auf eine Spaltenüberschrift klicken.',
       figureAll: 'Alle',
       back: 'Zurück',
       reset: 'Ansicht zurücksetzen',
@@ -283,6 +287,48 @@ window.__ModuleLoader__.load({
         if (run.group) ids.add(run.group);
       }
       return [...ids].sort((a, b) => a.localeCompare(b));
+    }
+
+
+    function manifestForDataset(manifest, datasetId) {
+      if (!manifest) return null;
+      const datasets = Array.isArray(manifest.datasets) ? manifest.datasets : [];
+      if (!datasets.length) return manifest;
+      const dataset = datasets.find((item) => item.id === datasetId) || datasets[0];
+      const runs = manifest.runs.filter((run) => run.dataset === dataset.id);
+      if (!runs.length) return manifest;
+      const modelKeys = new Set(runs.map((run) => run.model));
+      const models = manifest.models.filter((model) => modelKeys.has(model.key));
+      const groups = {};
+      for (const run of runs) {
+        if (!run.group) continue;
+        if (!groups[run.group]) groups[run.group] = { id: run.group, cones: [], z: [], note: '' };
+        const entry = groups[run.group];
+        const known = manifest.groups[run.group];
+        if (known) {
+          if (!entry.z.length) entry.z = known.z || [];
+          if (!entry.note) entry.note = known.note || '';
+        }
+        if (Array.isArray(run.sampleIds) && run.sampleIds.length > 0) {
+          entry.cones = run.sampleIds;
+        } else if (!entry.cones.length && known && Array.isArray(known.cones)) {
+          entry.cones = known.cones;
+        }
+      }
+      return {
+        ...manifest,
+        runs,
+        models,
+        groups,
+        datasetId: dataset.id,
+        datasetLabel: dataset.label,
+        counts: {
+          ...manifest.counts,
+          models: models.length,
+          runs: runs.length,
+          groups: Object.keys(groups).length,
+        },
+      };
     }
 
     function passLabel(pass) {
@@ -1678,6 +1724,7 @@ window.__ModuleLoader__.load({
           .filter((metric) => manifest.runs.some((run) => run.pass === pass && isNum(run.metrics?.[metric.key]))),
         [manifest, pass],
       );
+      const [sort, setSort] = useState({ key: null, dir: 1 });
       const rows = useMemo(() => {
         const output = [];
         for (const model of manifest.models) {
@@ -1716,21 +1763,51 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'e21-empty' }, h('p', null, t('emptyRuns')), h('p', { className: 'e21-muted' }, t('emptyBody')));
       }
 
+      const effectiveSort = sort.key && (sort.key === 'model' || columns.some((metric) => metric.key === sort.key))
+        ? sort
+        : { key: null, dir: 1 };
+      const sortBy = (key) => {
+        setSort((previous) => {
+          if (previous.key === key) return { key, dir: -previous.dir };
+          const metric = HEADLINE_METRICS.find((entry) => entry.key === key);
+          return { key, dir: key === 'model' ? 1 : (metric && metric.dir === 'lower' ? 1 : -1) };
+        });
+      };
+      const sortMark = (key) => (effectiveSort.key === key ? (effectiveSort.dir > 0 ? '↑' : '↓') : '');
+      const sortAria = (key) => (effectiveSort.key === key ? (effectiveSort.dir > 0 ? 'ascending' : 'descending') : 'none');
+      const sortableHeader = (key, label, meta, title, extra) => h('th', {
+        key,
+        scope: 'col',
+        className: cx('e21-th-sortable', effectiveSort.key === key && 'is-sorted', extra),
+        title,
+        onClick: () => sortBy(key),
+        onKeyDown: (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            sortBy(key);
+          }
+        },
+        role: 'button',
+        tabIndex: 0,
+        'aria-sort': sortAria(key),
+      },
+      label,
+      meta,
+      h('span', { className: 'e21-th-sort', 'aria-hidden': true }, sortMark(key)));
+
       const headerCells = h('thead', null,
         h('tr', null,
-          h('th', { className: 'e21-th-model', scope: 'col' }, t('models')),
+          sortableHeader('model', h('span', { className: 'e21-th-label' }, t('models')), null, 'Sort by model name', 'e21-th-model'),
           columns.map((metric) => {
             const direction = metric.dir === 'ideal' ? '≈ 1' : metric.dir === 'lower' ? '↓' : '↑';
             const unit = metricUnit(metric, pass);
-            return h('th', {
-              key: metric.key,
-              scope: 'col',
-              title: `${metric.label}${unit ? ` [${unit}]` : ''} · ${metric.dir === 'ideal' ? '1 is ideal' : metric.dir === 'lower' ? 'lower is better' : 'higher is better'}`,
-            },
-            h('span', { className: 'e21-th-label' }, metric.label),
-            h('span', { className: 'e21-th-meta' },
-              unit && h('span', { className: 'e21-th-unit' }, unit),
-              h('span', { className: 'e21-th-dir' }, direction)));
+            return sortableHeader(metric.key,
+              h('span', { className: 'e21-th-label' }, metric.label),
+              h('span', { className: 'e21-th-meta' },
+                unit && h('span', { className: 'e21-th-unit' }, unit),
+                h('span', { className: 'e21-th-dir' }, direction)),
+              `${metric.label}${unit ? ` [${unit}]` : ''} · ${metric.dir === 'ideal' ? '1 is ideal' : metric.dir === 'lower' ? 'lower is better' : 'higher is better'} · click to sort`,
+              null);
           })));
 
       const maxDeviationFor = (metric) => Math.max(0.001, ...rows.map((item) => {
@@ -1738,7 +1815,21 @@ window.__ModuleLoader__.load({
         return isNum(value) ? Math.abs(value - metric.ideal) : 0;
       }));
 
-      const bodyRows = rows.map((row) => {
+      const orderedRows = effectiveSort.key
+        ? [...rows].sort((a, b) => {
+          if (effectiveSort.key === 'model') return a.model.label.localeCompare(b.model.label) * effectiveSort.dir;
+          const left = a.metrics[effectiveSort.key];
+          const right = b.metrics[effectiveSort.key];
+          const leftNum = isNum(left);
+          const rightNum = isNum(right);
+          if (!leftNum && !rightNum) return a.model.label.localeCompare(b.model.label);
+          if (!leftNum) return 1;
+          if (!rightNum) return -1;
+          return (left - right) * effectiveSort.dir;
+        })
+        : rows;
+
+      const bodyRows = orderedRows.map((row) => {
         const selectedRow = selected.includes(row.model.key);
         const cells = columns.map((metric) => {
           const value = row.metrics[metric.key];
@@ -1807,7 +1898,7 @@ window.__ModuleLoader__.load({
           h('table', { className: 'e21-table' }, headerCells, h('tbody', null, bodyRows))),
         h('div', { className: 'e21-scorecard-foot' },
           h('span', null, group === 'all' ? 'Weighted across groups by cone count.' : `Group ${group}.`),
-          h('span', null, t('clickRows'))),
+          h('span', null, `${t('clickRows')} ${t('sortHint')}`)),
         selected.length > 0 && h('div', { className: 'e21-selected-strip' },
           h('span', null, `${selected.length} selected`),
           h(ModelDots, { models: manifest.models, selected }),
@@ -2328,6 +2419,7 @@ window.__ModuleLoader__.load({
       const exportStage = (kind === 'spectra' || kind === 'pdf') && stages[currentStage]
         ? stageSuffix(stages[currentStage])
         : '';
+      const exportDataset = manifest.datasetLabel || '';
       const exportGroup = group === 'all' ? 'All groups' : groupDisplay(group);
       const exportPass = passLabel(pass);
       const exportStageLabel = (kind === 'spectra' || kind === 'pdf') && stages[currentStage]
@@ -2342,22 +2434,22 @@ window.__ModuleLoader__.load({
             ? 'Power spectrum coherence'
             : 'Dimensionless power spectrum';
         exportTitleText = `${metricTitle} (${exportPass})`;
-        exportSubtitleText = [exportGroup, exportStageLabel].filter(Boolean).join(', ');
+        exportSubtitleText = [exportDataset, exportGroup, exportStageLabel].filter(Boolean).join(', ');
       } else if (kind === 'history') {
         exportTitleText = `Global history error (${exportPass})`;
-        exportSubtitleText = [exportGroup].filter(Boolean).join(', ');
+        exportSubtitleText = [exportDataset, exportGroup].filter(Boolean).join(', ');
       } else if (kind === 'pdf') {
         exportTitleText = 'Neutral hydrogen fraction PDF';
-        exportSubtitleText = [exportGroup, exportStageLabel].filter(Boolean).join(', ');
+        exportSubtitleText = [exportDataset, exportGroup, exportStageLabel].filter(Boolean).join(', ');
       } else if (kind === 'bubble') {
         exportTitleText = `Bubble mass distribution (${exportPass})`;
-        exportSubtitleText = [exportGroup, 'active stage'].filter(Boolean).join(', ');
+        exportSubtitleText = [exportDataset, exportGroup, 'active stage'].filter(Boolean).join(', ');
       } else if (kind === 'front') {
         exportTitleText = `${frontMetric === 'mean' ? 'Reionization front profile' : 'Reionization front RMSE'} (${exportPass})`;
-        exportSubtitleText = [exportGroup].filter(Boolean).join(', ');
+        exportSubtitleText = [exportDataset, exportGroup].filter(Boolean).join(', ');
       }
       const exportMeta = `${sourceLabel(source)}, ${selected.length} model${selected.length === 1 ? '' : 's'}${runs[0]?.nSamples ? `, ${runs[0].nSamples} cones` : ''}`;
-      const exportFileName = ['eval21', kind, group, pass,
+      const exportFileName = ['eval21', manifest.datasetId, kind, group, pass,
         kind === 'spectra' ? spectraMetric : null,
         kind === 'front' ? frontMetric : null,
         exportStage,
@@ -2575,9 +2667,9 @@ window.__ModuleLoader__.load({
 
       const conesTitle = `Held-out cones: ${xDefinition?.label || ''} vs ${yDefinition?.label || ''}`;
       const conesGroup = group === 'all' ? 'All groups' : groupDisplay(group);
-      const conesSubtitle = [conesGroup, passLabel(pass)].filter(Boolean).join(', ');
+      const conesSubtitle = [manifest.datasetLabel, conesGroup, passLabel(pass)].filter(Boolean).join(', ');
       const exportMeta = `${sourceLabel(source)}, ${selected.length} model${selected.length === 1 ? '' : 's'}, ${data.points.length} cones`;
-      const exportFileName = ['eval21', 'cones', group, pass, xMetric, yMetric].filter(Boolean).join('-');
+      const exportFileName = ['eval21', manifest.datasetId, 'cones', group, pass, xMetric, yMetric].filter(Boolean).join('-');
 
       return h('section', { className: 'e21-section' },
         h('div', { className: 'e21-controls e21-controls-wrap' },
@@ -2893,6 +2985,7 @@ window.__ModuleLoader__.load({
       const [defaults, setDefaults] = useState([]);
       const [recent, setRecent] = useState(() => readLocalJson(RECENT_KEY, []));
       const [tab, setTab] = useState('overview');
+      const [datasetId, setDatasetId] = useState('');
       const [pass, setPass] = useState('xhi');
       const [group, setGroup] = useState('all');
       const [selected, setSelected] = useState([]);
@@ -2901,6 +2994,10 @@ window.__ModuleLoader__.load({
       const [dataEpoch, setDataEpoch] = useState(0);
       const scanRef = useRef(null);
       const sourceRef = useRef(source);
+      const activeManifest = useMemo(
+        () => manifestForDataset(manifest, datasetId),
+        [manifest, datasetId],
+      );
 
       useEffect(() => { sourceRef.current = source; }, [source]);
 
@@ -2962,33 +3059,42 @@ window.__ModuleLoader__.load({
       }, [scan]);
 
       useEffect(() => {
-        if (!manifest) return;
+        if (!manifest) {
+          setDatasetId('');
+          return;
+        }
+        const ids = (manifest.datasets || []).map((entry) => entry.id);
+        setDatasetId((previous) => (ids.includes(previous) ? previous : (ids[0] || '')));
+      }, [manifest]);
+
+      useEffect(() => {
+        if (!activeManifest) return;
         setSelected((previous) => {
-          const valid = previous.filter((key) => manifest.models.some((model) => model.key === key));
+          const valid = previous.filter((key) => activeManifest.models.some((model) => model.key === key));
           if (valid.length) return valid;
-          const preferred = ['reference', 'b8_pointwise'].filter((key) => manifest.models.some((model) => model.key === key));
+          const preferred = ['reference', 'b8_pointwise'].filter((key) => activeManifest.models.some((model) => model.key === key));
           if (preferred.length) return preferred;
-          return manifest.models.slice(0, 2).map((model) => model.key);
+          return activeManifest.models.slice(0, 2).map((model) => model.key);
         });
-        const availablePasses = ['xhi', 'tb'].filter((value) => manifest.runs.some((run) => run.pass === value));
+        const availablePasses = ['xhi', 'tb'].filter((value) => activeManifest.runs.some((run) => run.pass === value));
         setPass((previous) => (availablePasses.includes(previous) ? previous : (availablePasses[0] || 'xhi')));
-        const groups = groupIds(manifest);
+        const groups = groupIds(activeManifest);
         setGroup((previous) => (previous === 'all' || groups.includes(previous) ? previous : 'all'));
         setChartGroup((previous) => (groups.includes(previous) ? previous : (groups[0] || '')));
         setChartPass((previous) => (availablePasses.includes(previous) ? previous : (availablePasses[0] || 'xhi')));
-      }, [manifest]);
+      }, [activeManifest]);
 
       const tabs = useMemo(() => {
-        if (!manifest) return [];
+        if (!activeManifest) return [];
         const entries = [];
-        if (manifest.runs.length) {
+        if (activeManifest.runs.length) {
           entries.push({ id: 'overview', label: t('overview') });
           entries.push({ id: 'charts', label: t('charts') });
           entries.push({ id: 'cones', label: t('cones') });
         }
-        if (manifest.figures.length) entries.push({ id: 'figures', label: t('figures') });
+        if (manifest && manifest.figures.length) entries.push({ id: 'figures', label: t('figures') });
         return entries;
-      }, [manifest, t]);
+      }, [activeManifest, manifest, t]);
 
       useEffect(() => {
         if (!tabs.length) return;
@@ -3002,7 +3108,7 @@ window.__ModuleLoader__.load({
       };
 
       const openCharts = () => {
-        const groups = manifest ? groupIds(manifest) : [];
+        const groups = activeManifest ? groupIds(activeManifest) : [];
         setChartGroup(group === 'all' ? (groups[0] || '') : group);
         setChartPass(pass);
         setTab('charts');
@@ -3010,6 +3116,7 @@ window.__ModuleLoader__.load({
 
       const focusRun = (run) => {
         if (!run) return;
+        if (run.dataset && run.dataset !== datasetId) setDatasetId(run.dataset);
         setSelected((previous) => (previous.includes(run.model) ? previous : [...previous, run.model]));
         setChartGroup(run.group);
         setChartPass(run.pass);
@@ -3088,15 +3195,28 @@ window.__ModuleLoader__.load({
             className: cx('e21-tab', tab === entry.id && 'is-active'),
             onClick: () => setTab(entry.id),
           }, entry.label))));
+        const datasets = Array.isArray(manifest.datasets) ? manifest.datasets : [];
+        if (datasets.length > 1 && activeManifest) {
+          body.push(h('div', { key: 'datasets', className: 'e21-datasetbar' },
+            h('span', { className: 'e21-dataset-label' }, t('dataset')),
+            h(Segmented, {
+              value: activeManifest.datasetId,
+              ariaLabel: t('dataset'),
+              options: datasets.map((entry) => ({ id: entry.id, label: entry.label })),
+              onChange: setDatasetId,
+            }),
+            h('span', { className: 'e21-muted' },
+              `${activeManifest.counts.models} models · ${activeManifest.counts.runs} runs · ${activeManifest.counts.groups} groups`)));
+        }
         if (tab === 'overview') {
           body.push(h(Overview, {
-            key: 'overview', t, manifest, pass, setPass, group, setGroup, selected, toggleModel, openCharts,
+            key: 'overview', t, manifest: activeManifest, pass, setPass, group, setGroup, selected, toggleModel, openCharts,
           }));
         } else if (tab === 'charts') {
           body.push(h(Charts, {
-            key: `charts-${chartPass}-${chartGroup}-${dataEpoch}`,
+            key: `charts-${activeManifest.datasetId}-${chartPass}-${chartGroup}-${dataEpoch}`,
             t,
-            manifest,
+            manifest: activeManifest,
             source,
             selected,
             setSelected,
@@ -3105,7 +3225,7 @@ window.__ModuleLoader__.load({
           }));
         } else if (tab === 'cones') {
           body.push(h(Cones, {
-            key: `cones-${dataEpoch}`, t, manifest, source, selected, setSelected, onOpenRun: focusRun,
+            key: `cones-${activeManifest.datasetId}-${dataEpoch}`, t, manifest: activeManifest, source, selected, setSelected, onOpenRun: focusRun,
           }));
         } else if (tab === 'figures') {
           body.push(h(Figures, { key: 'figures', t, manifest, source }));
@@ -3124,9 +3244,9 @@ window.__ModuleLoader__.load({
                   source, t, busy, onEdit: () => openEditor(), onRefresh: () => scan(source, true),
                 })),
               manifest && h('div', { className: 'e21-summary' },
-                manifest.counts.models > 0 && h('span', null, `${manifest.counts.models} models`),
-                manifest.counts.runs > 0 && h('span', null, `${manifest.counts.runs} runs`),
-                manifest.counts.groups > 0 && h('span', null, `${manifest.counts.groups} groups`),
+                (activeManifest || manifest).counts.models > 0 && h('span', null, `${(activeManifest || manifest).counts.models} models`),
+                (activeManifest || manifest).counts.runs > 0 && h('span', null, `${(activeManifest || manifest).counts.runs} runs`),
+                (activeManifest || manifest).counts.groups > 0 && h('span', null, `${(activeManifest || manifest).counts.groups} groups`),
                 manifest.counts.figures > 0 && h('span', null, `${manifest.counts.figures} figures`),
                 h('span', { className: 'e21-summary-rule', 'aria-hidden': true }))),
             editor && h(SourceEditor, {
@@ -3240,6 +3360,19 @@ window.__ModuleLoader__.load({
 }
 @media (hover: hover) { .e21-icon-btn:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent); color: var(--dsw-alias-label-primary); } }
 .e21-icon-btn:disabled { opacity: .4; cursor: default; }
+.e21-datasetbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.e21-dataset-label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
 .e21-tabs {
   display: flex;
   gap: 2px;
@@ -3561,6 +3694,11 @@ window.__ModuleLoader__.load({
 .e21-th-label { display: block; color: var(--dsw-alias-label-primary); font-size: 12px; }
 .e21-th-meta { display: flex; justify-content: flex-end; gap: 5px; margin-top: 2px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
 .e21-th-dir { opacity: .85; }
+.e21-th-sortable { cursor: pointer; user-select: none; }
+.e21-th-sortable:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary)); outline-offset: -2px; }
+@media (hover: hover) { .e21-th-sortable:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, transparent); } }
+.e21-th-sort { margin-left: 5px; color: var(--dsw-alias-label-secondary); font-size: 10px; }
+.e21-th-sortable.is-sorted .e21-th-sort { color: var(--dsw-alias-brand-primary); }
 .e21-table td { padding: 8px 12px; border-bottom: 0.5px solid color-mix(in srgb, var(--dsw-alias-border-l1) 65%, transparent); vertical-align: middle; }
 .e21-table tbody tr:last-child td { border-bottom: 0; }
 .e21-table tbody tr { cursor: pointer; }

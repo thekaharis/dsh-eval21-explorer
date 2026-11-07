@@ -56,6 +56,17 @@ def flatten(value, prefix, out):
         out[prefix] = float(value)
 
 
+def dataset_name(info):
+    """Evaluation dataset directory (the parent of a group root)."""
+    info = info if isinstance(info, dict) else {}
+    data_root = info.get("root") or info.get("path")
+    if data_root:
+        parent = os.path.basename(os.path.dirname(str(data_root).rstrip(os.sep)))
+        if parent:
+            return parent
+    return ""
+
+
 def dataset_group(info, relative_path):
     """The short data label used by eval21.visualization.common.Run."""
     info = info if isinstance(info, dict) else {}
@@ -131,6 +142,7 @@ def scan_file(path, root):
             "path": relative,
             "model": model,
             "group": group,
+            "dataset": dataset_name(dataset_info),
             "pass": target,
             "variant": variant_of(relative),
             "target": target,

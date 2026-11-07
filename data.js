@@ -28,6 +28,47 @@ const MAX_DEPTH = 4;
 const MAX_ENTRIES = 30000;
 const MAX_FIGURES = 500;
 
+
+const DATASET_LABELS = {
+  '21cmfast_199': '21cmFAST 199',
+  '21cmfast_200': '21cmFAST 200',
+  'loreli': 'LoReLi',
+  legacy: 'Legacy results',
+};
+
+const MODEL_LABELS = {
+  fno_cnn_whno_es: 'fno-21cm (CNN)',
+};
+
+function prettyLabel(value) {
+  return String(value || '').replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function datasetIdForRun(run) {
+  if (run.dataset) return run.dataset;
+  if (run.format === 'hdf5') {
+    const top = String(run.path || '').split('/')[0];
+    return top && /^(21cmfast|loreli)/i.test(top) ? top : 'data';
+  }
+  return 'legacy';
+}
+
+function datasetLabelForRun(run, id, source) {
+  const top = String(run.path || '').split('/')[0];
+  if (DATASET_LABELS[top]) return DATASET_LABELS[top];
+  const sourceRoot = source && source.root ? String(source.root).replace(/\/+$/, '') : '';
+  const sourceBase = sourceRoot ? path.posix.basename(sourceRoot) : '';
+  if (DATASET_LABELS[sourceBase]) return DATASET_LABELS[sourceBase];
+  if (/loreli/i.test(id)) return 'LoReLi';
+  if (/21cmfast/i.test(id)) {
+    if (/200/.test(id)) return '21cmFAST 200';
+    if (/199/.test(id)) return '21cmFAST 199';
+    return '21cmFAST';
+  }
+  if (DATASET_LABELS[id]) return DATASET_LABELS[id];
+  return prettyLabel(id) || 'Data';
+}
+
 const PALETTE = [
   '#4c78a8', '#f58518', '#54a24b', '#e45756', '#72b7b2',
   '#eeca3b', '#b279a2', '#ff9da6', '#9d755d', '#bab0ac',
@@ -35,6 +76,11 @@ const PALETTE = [
 ];
 
 /** Convert a matplotlib grayscale style value ("0.15") to a CSS colour. */
+function generatedColor(index) {
+  const hue = Math.round((index * 137.508 + 210) % 360);
+  return `hsl(${hue} 46% 48%)`;
+}
+
 function normalizeColor(value, fallback) {
   if (typeof value === 'string') {
     const gray = /^\s*(0|1|0?\.\d+)\s*$/.exec(value);
@@ -329,6 +375,20 @@ export function finalizeManifest(raw, source) {
   const style = normalizeStyle(raw.style);
   const runs = Array.isArray(raw.runs) ? raw.runs.filter((run) => run && run.path) : [];
   const groupsRaw = raw.groups && typeof raw.groups === 'object' ? raw.groups : {};
+  const datasetMap = new Map();
+  for (const run of runs) {
+    const id = datasetIdForRun(run);
+    run.dataset = id;
+    run.datasetLabel = datasetLabelForRun(run, id, source);
+    if (!datasetMap.has(id)) {
+      datasetMap.set(id, { id, label: run.datasetLabel, runs: 0, models: new Set(), groups: new Set(), passes: new Set() });
+    }
+    const entry = datasetMap.get(id);
+    entry.runs += 1;
+    entry.models.add(run.model);
+    if (run.group) entry.groups.add(run.group);
+    if (run.pass) entry.passes.add(run.pass);
+  }
   const modelKeys = [];
   for (const run of runs) {
     if (!modelKeys.includes(run.model)) modelKeys.push(run.model);
@@ -346,8 +406,8 @@ export function finalizeManifest(raw, source) {
     const entry = style[key];
     return {
       key,
-      label: entry?.label || key,
-      color: entry?.color || PALETTE[index % PALETTE.length],
+      label: entry?.label || MODEL_LABELS[key] || key,
+      color: entry?.color || (index < PALETTE.length ? PALETTE[index] : generatedColor(index)),
       dash: entry?.dash || '',
     };
   });
@@ -386,6 +446,16 @@ export function finalizeManifest(raw, source) {
   const kind = runs.length > 0
     ? (figures.length > 0 ? 'mixed' : 'runs')
     : (figures.length > 0 ? 'figures' : 'empty');
+  const datasets = [...datasetMap.values()]
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      runs: entry.runs,
+      models: entry.models.size,
+      groups: entry.groups.size,
+      passes: [...entry.passes].sort(),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id));
   return {
     version: 1,
     source: { kind: source.kind, root: source.root, host: source.host || null },
@@ -395,11 +465,13 @@ export function finalizeManifest(raw, source) {
     groups,
     runs,
     figures,
+    datasets,
     counts: {
       models: models.length,
       groups: Object.keys(groups).length,
       runs: runs.length,
       figures: figures.length,
+      datasets: datasets.length,
     },
   };
 }

@@ -173,6 +173,17 @@ def h5_flatten(value, prefix, out):
             out[prefix] = float(value)
 
 
+def h5_dataset_name(info):
+    """Evaluation dataset directory (the parent of a group root)."""
+    info = info if isinstance(info, dict) else {}
+    data_root = info.get("root") or info.get("path")
+    if data_root:
+        parent = os.path.basename(os.path.dirname(str(data_root).rstrip(os.sep)))
+        if parent:
+            return parent
+    return ""
+
+
 def h5_group(info, relative_path):
     """The short data label used by eval21.visualization.common.Run."""
     info = info if isinstance(info, dict) else {}
@@ -244,6 +255,7 @@ def h5_scan_file(path, base):
             "path": relative,
             "model": model,
             "group": h5_group(dataset_info, relative),
+            "dataset": h5_dataset_name(dataset_info),
             "pass": target,
             "variant": "viz" if "viz" in parts else "",
             "target": target,
