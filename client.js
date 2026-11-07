@@ -19,8 +19,10 @@ window.__ModuleLoader__.load({
       browse: 'Browse…',
       ssh: 'SSH',
       local: 'Local',
+      user: 'User',
+      userHint: 'optional — from ssh config by default',
       host: 'Host',
-      hostHint: 'ssh config alias or user@host',
+      hostHint: 'ssh config alias or hostname',
       folder: 'Folder or .h5 file',
       connect: 'Connect',
       connecting: 'Connecting…',
@@ -78,8 +80,10 @@ window.__ModuleLoader__.load({
       browse: 'Durchsuchen…',
       ssh: 'SSH',
       local: 'Lokal',
+      user: 'Benutzer',
+      userHint: 'optional — sonst aus der SSH-Konfiguration',
       host: 'Host',
-      hostHint: 'SSH-Alias oder user@host',
+      hostHint: 'SSH-Alias oder Hostname',
       folder: 'Ordner oder .h5-Datei',
       connect: 'Verbinden',
       connecting: 'Verbinde…',
@@ -1436,10 +1440,30 @@ window.__ModuleLoader__.load({
             }, h(IconClose, { size: 13 }))))));
     }
 
+    function splitSshDestination(value) {
+      const text = String(value || '').trim();
+      const at = text.lastIndexOf('@');
+      if (at > 0) return { user: text.slice(0, at), host: text.slice(at + 1) };
+      return { user: '', host: text };
+    }
+
+    function composeSshDestination(user, host) {
+      const userText = String(user || '').trim();
+      const hostText = String(host || '').trim();
+      if (!hostText) return '';
+      if (!userText) return hostText;
+      const hostname = hostText.includes('@') ? hostText.slice(hostText.lastIndexOf('@') + 1) : hostText;
+      return `${userText}@${hostname}`;
+    }
+
     function SourceEditor({ ctx, t, initial, onConnect, onClose }) {
+      const initialSsh = initial && initial.kind === 'ssh'
+        ? splitSshDestination(initial.host)
+        : { user: '', host: '' };
       const [mode, setMode] = useState(initial && initial.kind === 'ssh' ? 'ssh' : 'local');
       const [localPath, setLocalPath] = useState(initial && initial.kind === 'local' ? initial.root : '');
-      const [host, setHost] = useState(initial && initial.kind === 'ssh' ? initial.host : '');
+      const [user, setUser] = useState(initialSsh.user);
+      const [host, setHost] = useState(initialSsh.host);
       const [remotePath, setRemotePath] = useState(initial && initial.kind === 'ssh' ? initial.root : '');
       const [busy, setBusy] = useState(false);
       const [error, setError] = useState('');
@@ -1475,9 +1499,10 @@ window.__ModuleLoader__.load({
 
       const connect = async () => {
         setError('');
+        const destination = composeSshDestination(user, host);
         const source = mode === 'local'
           ? { kind: 'local', root: localPath.trim() }
-          : { kind: 'ssh', host: host.trim(), root: remotePath.trim() };
+          : { kind: 'ssh', host: destination, root: remotePath.trim() };
         if (!source.root) {
           setError(mode === 'local' ? 'Choose a folder first.' : 'Enter the remote folder.');
           return;
@@ -1500,7 +1525,9 @@ window.__ModuleLoader__.load({
         setError('');
         setBrowseBusy(true);
         try {
-          const answer = await apiJson('list', { host: host.trim(), path: target || '~' });
+          const destination = composeSshDestination(user, host);
+          if (!destination) throw new Error('Enter an SSH host.');
+          const answer = await apiJson('list', { host: destination, path: target || '~' });
           if (answer.error) throw new Error(answer.error);
           setBrowser(answer);
         } catch (browseError) {
@@ -1514,7 +1541,7 @@ window.__ModuleLoader__.load({
         if (event.key === 'Enter') connect();
       };
 
-      const source = mode === 'local' ? { kind: 'local', root: localPath } : { kind: 'ssh', host, root: remotePath };
+      const source = mode === 'local' ? { kind: 'local', root: localPath } : { kind: 'ssh', host: composeSshDestination(user, host), root: remotePath };
 
       return h('div', { className: 'e21-editor' },
         h('div', { className: 'e21-editor-head' },
@@ -1548,6 +1575,17 @@ window.__ModuleLoader__.load({
                 busy ? t('connecting') : t('connect'))))
           : h('div', { className: 'e21-editor-body' },
             h('label', { className: 'e21-field' },
+              h('span', null, t('user')),
+              h('input', {
+                type: 'text',
+                value: user,
+                placeholder: t('userHint'),
+                autoComplete: 'username',
+                spellCheck: false,
+                onChange: (event) => { setUser(event.target.value); setBrowser(null); },
+                onKeyDown: onEnter,
+              })),
+            h('label', { className: 'e21-field' },
               h('span', null, t('host')),
               h('input', {
                 type: 'text',
@@ -1569,10 +1607,10 @@ window.__ModuleLoader__.load({
                   onKeyDown: onEnter,
                 }),
                 h('button', {
-                  type: 'button', className: 'e21-btn', disabled: busy || browseBusy || !host.trim(),
+                  type: 'button', className: 'e21-btn', disabled: busy || browseBusy || !composeSshDestination(user, host),
                   onClick: () => browseRemote(remotePath.trim() || '~'),
                 }, browseBusy ? '…' : t('browse')))),
-            h('p', { className: 'e21-hint' }, 'Uses your ssh config and keys. Key-based, non-interactive login is required. Folders and single .h5 run files both work.'),
+            h('p', { className: 'e21-hint' }, 'Uses your ssh config and keys. Leave User empty to use the configured user. Key-based, non-interactive login is required. Folders and single .h5 run files both work.'),
             browser && h('div', { className: 'e21-browser' },
               h('div', { className: 'e21-browser-head' },
                 h('button', {

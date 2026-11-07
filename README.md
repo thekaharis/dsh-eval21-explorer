@@ -101,12 +101,15 @@ and recent sources are also remembered in the Web UI.
 
 ## SSH / clusters
 
-Choose **SSH**, enter an `ssh` config alias (or `user@host`) and the remote
-folder or `.h5` file. The Host runs the bundled `remote.py` with your normal
-`ssh` client, so `~/.ssh/config`, agent, keys, jump hosts and known_hosts keep
-working. Only key-based, non-interactive login is supported (`BatchMode=yes`).
+Choose **SSH**, fill in the optional **User**, the host alias or hostname, and
+the remote folder or `.h5` file. Leave **User** empty to use the user from your
+`~/.ssh/config`; an explicit `user@host` typed in the host field still works.
+The Host runs the bundled `remote.py` with your normal `ssh` client, so
+`~/.ssh/config`, agent, keys, jump hosts and known_hosts keep working. Only
+key-based, non-interactive login is supported (`BatchMode=yes`).
 
 ```text
+user: hd_id260
 host: binac
 path: /pfs/10/work/.../runs/cm21eval
 ```
