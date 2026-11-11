@@ -29,6 +29,12 @@ figures.
   distinct from the dashed model curves.
 - **Figures** — PNG/GIF/WebP/SVG under the selected folder with a pan/zoom
   viewer. PDFs open in a new tab.
+- **Chat references** — after opening a source, type `@` in the composer and
+  search by dataset, group, model, target, or figure name. Runs, groups and
+  datasets reference a generated JSON summary under
+  `~/.dsh/eval21-explorer/references/`; figures reference the original local
+  image or a cached copy from SSH. Selecting a reference inserts an ordinary
+  `@path` that the agent can read (or inspect as an image).
 
 ## Requirements
 
@@ -80,6 +86,12 @@ For a tree containing several evaluation sets, select the **parent folder**
 (e.g. `cm21eval_hdf5/`, not one of its `21cmfast_199/`, `21cmfast_200/` or
 `loreli/` subfolders). The dataset switcher then appears above the tabs. The
 `fno-21cm (CNN)` model (`fno_cnn_whno_es`) is part of the **21cmFAST 200** set.
+
+The first scan also builds the chat-reference catalog. Each run gets a JSON
+summary (metrics, stages, sample IDs and the original HDF5 path), each group and
+dataset gets its own summary, and figures become referenceable by filename.
+Remote figures are copied into the local reference cache only when a matching
+`@` query is selected. The cache is disposable and can be deleted at any time.
 
 For HDF5 data the panel reads `/dataset/info`, `/samples/ids`,
 `/model/meta`, `/metrics/*/result`, and only the plotted
@@ -138,6 +150,7 @@ selected tree and transfers only the metrics the panel plots.
 | `ssh.js` | SSH transport, including remote HDF5 reads |
 | `remote.py` | Remote scan/read/list helper, h5py for new run files |
 | `client.js` | Plain-JS Client plugin: slots, scorecard, SVG charts, viewer |
+| `references.js` | Builds the `@`-reference catalog and overlays it on the existing file-reference provider |
 | `defaults.json` | Empty shipped suggestions; user suggestions live under `~/.dsh/` |
 
 The Client half imports only React from the Harness module table; it does not

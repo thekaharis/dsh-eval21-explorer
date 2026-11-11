@@ -19,6 +19,7 @@ import {
   PLUGIN_H5_METRICS,
 } from './data.js';
 import { sshH5Read, sshList, sshRead, sshScan, validateHost } from './ssh.js';
+import { ReferenceCatalog, attachFileReferences } from './references.js';
 
 const API_PREFIX = '/eval21-api';
 const MANIFEST_TTL = 15_000;
@@ -35,6 +36,7 @@ const manifests = new Map();
 const runs = new Map();
 const remoteFiles = new Map();
 let defaultsCache = null;
+let referenceCatalog = null;
 
 export const inject = ['webServer', 'connection'];
 
@@ -256,7 +258,15 @@ async function handle(request, connection) {
           if (cached.startsWith(`${key}::`)) remoteFiles.delete(cached);
         }
       }
-      return json(await buildManifest(source, signal));
+      const manifest = await buildManifest(source, signal);
+      if (referenceCatalog) {
+        try {
+          await referenceCatalog.update(manifest, source, (relativePath, figureSignal) => readSourceFile(source, relativePath, false, figureSignal));
+        } catch (error) {
+          console.warn(`eval21 references: catalog rebuild failed: ${error.message}`);
+        }
+      }
+      return json(manifest);
     } catch (error) {
       return failure(error);
     }
@@ -308,6 +318,17 @@ async function handle(request, connection) {
 }
 
 export function apply(ctx) {
+  referenceCatalog = new ReferenceCatalog({
+    log: (message) => {
+      if (ctx.logger && typeof ctx.logger.warn === 'function') ctx.logger.warn(message);
+      else console.warn(message);
+    },
+  });
+  attachFileReferences(ctx, referenceCatalog);
+  ctx.effect(() => () => {
+    if (referenceCatalog) referenceCatalog.clear();
+    referenceCatalog = null;
+  }, 'eval21: @ reference catalog');
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: API_PREFIX,

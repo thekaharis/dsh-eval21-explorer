@@ -411,6 +411,8 @@ export function finalizeManifest(raw, source) {
       dash: entry?.dash || '',
     };
   });
+  const modelLabelByKey = new Map(models.map((model) => [model.key, model.label]));
+  for (const run of runs) run.modelLabel = modelLabelByKey.get(run.model) || run.model;
   const groupOrder = new Map(modelKeys.map((key, index) => [key, index]));
   runs.sort((a, b) => {
     const model = (groupOrder.get(a.model) ?? 999) - (groupOrder.get(b.model) ?? 999);
